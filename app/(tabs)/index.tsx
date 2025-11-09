@@ -270,18 +270,18 @@ export default function CameraScreen() {
 }
 
 type Report = {
-  user_id: string;
-  status: string;
+  // user_id: string;
+  // status: string;
   photo_base64: string;
   latitude: number;
   longitude: number;
 };
 
 async function sendPostRequest(photoBase64: string, lat: number, lon: number) {
-  const url = "https://your-api-endpoint.com/process-image";
+  const url = "172.24.200.91:8000/process-image";
   const payload: Report = {
-    user_id: "1",
-    status: "new",
+    // user_id: "1",
+    // status: "new",
     photo_base64: photoBase64,
     latitude: lat,
     longitude: lon,
