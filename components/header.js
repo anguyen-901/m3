@@ -7,7 +7,7 @@ export default function Tab1Screen() {
 
   return (
     <View style={styles.header}>
-      <TouchableOpacity onPress={() => router.replace("/")}>
+      <TouchableOpacity onPress={() => router.replace("/(tabs)/")}>
         <Ionicons name="arrow-back" size={28} color="black" />
       </TouchableOpacity>
     </View>

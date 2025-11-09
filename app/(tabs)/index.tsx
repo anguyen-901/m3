@@ -1,5 +1,6 @@
 import { CameraView, Camera, CameraType, CameraMode } from "expo-camera";
 import type { CameraCapturedPicture } from "expo-camera";
+import * as Location from "expo-location";
 import { useState, useRef, useEffect } from "react";
 import { StyleSheet, Text, TouchableOpacity, View, Image } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
@@ -19,10 +20,18 @@ export default function CameraScreen() {
   const [micPermission, setMicPermission] = useState<boolean | undefined>(
     undefined,
   ); //// state variable for microphone permission
+  const [locationPermission, setLocationPermission] = useState<
+    boolean | undefined
+  >(undefined); //// state variable for location permission
   const [cameraMode] = useState<CameraMode>("picture"); //State variable for picture or video. By default it will be for picture
   const [facing, setFacing] = useState<CameraType>("back");
   const [photo, setPhoto] = useState<CameraCapturedPicture | undefined>(); //After picture is taken this state will be updated with the picture
-  const [zoom, setZoom] = useState(0); //State to control the digital zoom
+  const [zoom, setZoom] = useState(0.1); //State to control the digital zoom
+  const [activeZoomButton, setActiveZoomButton] = useState(0.1);
+  const [location, setLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
   let cameraRef = useRef<CameraView>(null); //Creates a ref object and assigns it to the variable cameraRef.
   const router = useRouter();
 
@@ -35,9 +44,26 @@ export default function CameraScreen() {
         await MediaLibrary.requestPermissionsAsync();
       const { status: micStatus } =
         await Camera.requestMicrophonePermissionsAsync();
+      const { status: locationStatus } =
+        await Location.requestForegroundPermissionsAsync();
       setCameraPermission(cameraStatus === "granted");
       setMediaLibraryPermission(mediaStatus === "granted");
       setMicPermission(micStatus === "granted");
+      setLocationPermission(locationStatus === "granted");
+
+      if (locationStatus === "granted") {
+        const loc = await Location.getCurrentPositionAsync({});
+        setLocation({
+          latitude: loc.coords.latitude,
+          longitude: loc.coords.longitude,
+        });
+        console.log(
+          "Latitude:",
+          loc.coords.latitude,
+          "Longitude:",
+          loc.coords.longitude,
+        );
+      }
     })();
   }, []);
 
@@ -45,7 +71,8 @@ export default function CameraScreen() {
   if (
     cameraPermission === undefined ||
     mediaLibraryPermission === undefined ||
-    micPermission === undefined
+    micPermission === undefined ||
+    locationPermission === undefined
   ) {
     return <Text>Request Permissions....</Text>;
   } else if (!cameraPermission) {
@@ -78,35 +105,56 @@ export default function CameraScreen() {
   //After the picture is captured it will be displayed to the user and the user will also be provided the option to save or discard the image
   if (photo) {
     let savePhoto = () => {
-      MediaLibrary.saveToLibraryAsync(photo.uri).then(() => {
-        setPhoto(undefined);
-      });
+      // MediaLibrary.saveToLibraryAsync(photo.uri).then(() => {
+      //   setPhoto(undefined);
+      // });
+      if (
+        photo?.base64 !== undefined &&
+        location?.latitude !== undefined &&
+        location?.longitude !== undefined
+      ) {
+        sendPostRequest(photo.base64, location?.latitude, location?.longitude)
+          .then((result) => {
+            // Handle successful response
+            router.push({
+              pathname: "/(tabs)/map",
+              params: {
+                latitude: location.latitude.toString(),
+                longitude: location.longitude.toString(),
+              },
+            });
+          })
+          .catch((error) => {
+            // Handle error
+          });
+      } else {
+        console.log("Missing photo base64 or location data");
+      }
     };
 
     return (
-      <SafeAreaView style={styles.imageContainer}>
-        <Header />
+      <View style={styles.imageContainer}>
         <Image style={styles.preview} source={{ uri: photo.uri }} />
         <View style={styles.btnContainer}>
           {mediaLibraryPermission ? (
             <TouchableOpacity style={styles.btn} onPress={savePhoto}>
-              <Ionicons name="save-outline" size={30} color="black" />
+              <Ionicons name="send-outline" size={30} color="black" />
             </TouchableOpacity>
           ) : undefined}
           <TouchableOpacity
             style={styles.btn}
             onPress={() => setPhoto(undefined)}
           >
-            <Ionicons name="trash-outline" size={30} color="black" />
+            <Ionicons name="trash-outline" size={30} color="red" />
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   //We will design the camera UI first
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <CameraView
         style={styles.camera}
         facing={facing}
@@ -114,43 +162,151 @@ export default function CameraScreen() {
         mode={cameraMode}
         zoom={zoom}
       >
-        <Slider
-          style={{
-            width: "100%",
-            height: 40,
-            position: "absolute",
-            top: "75%",
-          }}
-          minimumValue={0}
-          maximumValue={1}
-          minimumTrackTintColor="cyan"
-          maximumTrackTintColor="white"
-          value={zoom}
-          onValueChange={(value) => setZoom(value)}
-        />
+        {/*<Slider
+              style={{
+                width: "100%",
+                height: 40,
+                position: "absolute",
+                top: "75%",
+              }}
+              minimumValue={0}
+              maximumValue={1}
+              minimumTrackTintColor="cyan"
+              maximumTrackTintColor="white"
+              value={zoom}
+              onValueChange={(value) => setZoom(value)}
+            />*/}
         <View style={styles.buttonContainer}>
           <TouchableOpacity style={styles.button} onPress={toggleCameraFacing}>
             <Ionicons name="camera-reverse-outline" size={20} color="white" />
           </TouchableOpacity>
         </View>
-        {/*<View style={styles.mapContainer}>
+        <View style={styles.zoomButtonContainer}>
           <TouchableOpacity
-            style={styles.button}
-            onPress={() => router.push("/MapScreen")}
+            style={[
+              styles.zoomButton,
+              activeZoomButton === 0 && styles.activeZoomButton,
+            ]}
+            onPress={() => {
+              setZoom(0);
+              setActiveZoomButton(0);
+            }}
           >
-            <Ionicons name="map-outline" size={20} color="white" />
+            <Text
+              style={[
+                styles.zoomButtonText,
+                activeZoomButton === 0 && styles.activeZoomButtonText,
+              ]}
+            >
+              0.5x
+            </Text>
           </TouchableOpacity>
-        </View>*/}
+          <TouchableOpacity
+            style={[
+              styles.zoomButton,
+              activeZoomButton === 0.1 && styles.activeZoomButton,
+            ]}
+            onPress={() => {
+              setZoom(0.1);
+              setActiveZoomButton(0.1);
+            }}
+          >
+            <Text
+              style={[
+                styles.zoomButtonText,
+                activeZoomButton === 0.1 && styles.activeZoomButtonText,
+              ]}
+            >
+              1x
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.zoomButton,
+              activeZoomButton === 0.2 && styles.activeZoomButton,
+            ]}
+            onPress={() => {
+              setZoom(0.2);
+              setActiveZoomButton(0.2);
+            }}
+          >
+            <Text
+              style={[
+                styles.zoomButtonText,
+                activeZoomButton === 0.2 && styles.activeZoomButtonText,
+              ]}
+            >
+              2x
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.zoomButton,
+              activeZoomButton === 1 && styles.activeZoomButton,
+            ]}
+            onPress={() => {
+              setZoom(1);
+              setActiveZoomButton(1);
+            }}
+          >
+            <Text
+              style={[
+                styles.zoomButtonText,
+                activeZoomButton === 1 && styles.activeZoomButtonText,
+              ]}
+            >
+              10x
+            </Text>
+          </TouchableOpacity>
+        </View>
         <View style={styles.shutterContainer}>
-          {cameraMode === "picture" ? (
-            <TouchableOpacity style={styles.button} onPress={takePic}>
-              <Ionicons name="aperture-outline" size={40} color="white" />
-            </TouchableOpacity>
-          ) : undefined}
+          <TouchableOpacity style={styles.button} onPress={takePic}>
+            <Ionicons name="aperture-outline" size={80} color="white" />
+          </TouchableOpacity>
         </View>
       </CameraView>
-    </SafeAreaView>
+    </View>
   );
+}
+
+type Report = {
+  user_id: string;
+  status: string;
+  photo_base64: string;
+  latitude: number;
+  longitude: number;
+};
+
+async function sendPostRequest(photoBase64: string, lat: number, lon: number) {
+  const url = "https://your-api-endpoint.com/process-image";
+  const payload: Report = {
+    user_id: "1",
+    status: "new",
+    photo_base64: photoBase64,
+    latitude: lat,
+    longitude: lon,
+  };
+  console.log("Payload: ", payload);
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload), // Convert your data object to a JSON string
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const responseData = await response.json(); // Parse the JSON response
+    console.log("Success:", responseData);
+    return responseData;
+  } catch (error) {
+    console.error("Error sending POST request:", error);
+    throw error; // Re-throw the error for handling in the calling code
+  }
 }
 
 const styles = StyleSheet.create({
@@ -170,6 +326,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "transparent",
     margin: 20,
+  },
+  zoomButtonContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginVertical: 10,
+  },
+  zoomButton: {
+    flex: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginHorizontal: 4,
+    backgroundColor: "#222",
+    borderRadius: 8,
+  },
+  zoomButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
+  activeZoomButton: {
+    backgroundColor: "#00bfff",
+  },
+  activeZoomButtonText: {
+    color: "black",
   },
   shutterContainer: {
     display: "flex",
@@ -202,7 +383,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   imageContainer: {
-    height: "95%",
+    height: "100%",
     width: "100%",
   },
   preview: {
